@@ -1,6 +1,7 @@
 require 'rubygems'
 require 'memcache' # for the error definition
-require 'throttle'
+require 'spec'
+require 'lib/throttle'
 class MockMemcache < Hash
 
   def initialize(*args)

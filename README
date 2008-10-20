@@ -93,9 +93,26 @@ is called every time the count is incremented. Normally it tries to
 call the block or callbacks supplied at instantiation, but you may wish
 to hardwire the behavior instead.
 
+== Reliability
+
+Throttle deals gracefully with memcache failures by silently ignoring
+them. The throttle won't record events or test thresholds if memcache
+is unavailable or failing for some reason. It will simply do nothing
+so that your application proceeds normally.
+
+Throttle (by careful use of memcache's incr functionality) should avoid
+all race conditions that might normally be encountered, with one
+exception: creation of a new bucket - in this instance it is possible
+for two throttles trying to create the same bucket to overwrite
+each others' entry, which will cause each to miss the fact that the
+other counted an event, and could even cause the same threshold to
+be crossed (and processed) by both at the same time. This seems a minor
+fault.
+
 == TODO
 
 * Sane methods for determining the current count without incrementing
 * Support for callbacks based on ranges instead of just single thresholds
 * Allow callbacks/block to be configured after instantiation
+* Match args to callbacks to what they accept (arity)
 * See if anyone cares :-)
