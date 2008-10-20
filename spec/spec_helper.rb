@@ -52,7 +52,8 @@ end
 
 Spec::Runner.configure do |config|
   config.before :each do
-    Throttle.set_memcache(@cache = MockMemcache.new)
+    # start with a fresh cache for each example
+    Throttle.memcache = @cache = MockMemcache.new
   end
 end
 

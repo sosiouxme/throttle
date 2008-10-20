@@ -1,38 +1,34 @@
 class Throttle
   # the memcached object instance we'll be using
   @@memcache = nil
-  def Throttle.set_memcache(cache)
+  def Throttle.memcache=(cache)
     @@memcache = cache
   end
+  def Throttle.memcache(cache)
+    @@memcache
+  end
 
-  # the namespace prefix all throttles will use in the cache
+  # the namespace prefix for all throttles in the cache
   CACHE_PREFIX = 'Throttle:'
 
   attr_reader :name, :buckets, :time_per_bucket, :initial_time
 
-  # retrieve, or else create a new one; always update expiration
-  def Throttle.create(args = {})
-    throttle = self.retrieve(args[:name] || '')
-    unless throttle
-      throttle = self.new(args)
-    end
-    throttle.store
+  def initialize(args = {}, &test)
+    # expecting args:
+    # :name -> uniquely identifying throttle name
+    # :buckets -> number of buckets to track
+    # :time_per_bucket -> seconds during which each bucket counts
+    # number => Proc -> procedure to run when number threshold hit
+    @name = args.delete(:name) || ""
+    @buckets = args.delete(:buckets) || 1
+    @time_per_bucket = args.delete(:time_per_bucket) || 60
+    @test = test ? test : args # whatever's left
+
+    # intialize start time
+    self.retrieve_time #gets start time of existing throttle if any
+    @initial_time ||= Time.now.to_i
+    self.store_time #update expiration
   end
-
-  ############################################################
-  # This method must be overridden!
-  #
-  # the action that is taken at a threshold must be specified
-  # in a subclass or singleton method. why not a block or
-  # callback? because that would have to be stored with the
-  # object, and the object must be serializable for memcache.
-
-  def test_threshold(count) #abstract!
-  # this is called whenever an event occurs and passed
-  # the new tally so that action may be taken if needed.
-    raise '#test_threshold must be defined in a subclass'
-  end
-
 
   ####################################################
   # use the throttle
@@ -57,15 +53,38 @@ class Throttle
     end
   end
 
+  ############################################################
+  # This method may be good to override
+  #
+  # as written the test_threshold method expects a block or
+  # callback(s) to be supplied at instantiation time.
+
+  def test_threshold(count)
+  # this is called whenever an event occurs and is passed
+  # the new tally so that action may be taken if needed.
+    if @test.is_a? Proc
+      @test.call(count)
+    elsif @test.is_a? Hash
+      if test = @test[count]
+        test.call(count)
+      end
+    else
+      raise 'should not get here'
+    end
+  end
+
+
+protected
+
   #########################################################
   # try to have the class find an existing throttle
-  # (so we know whether to use previous or create it)
+  # (so we know whether to use previous timestamp)
 
-  # have this throttle object store itself into the memcache;
-  # it will expire if new buckets are not created
-  def store
+  # have this throttle object store its time into the
+  # memcache; it will expire if new buckets are not created
+  def store_time
     begin
-      @@memcache.set(self.gen_throttle_key, self,
+      @@memcache.set(self.gen_throttle_key, @initial_time,
         Time.now.to_i + @buckets * @time_per_bucket)
     rescue MemCache::MemCacheError
       #memcache not working, silently ignore
@@ -73,40 +92,18 @@ class Throttle
     return self
   end
 
-  def Throttle.retrieve(name)
+  def retrieve_time
     begin
-      t = @@memcache.get( self.gen_throttle_key(name) )
-      return t if t
-      # if there isn't one... there's just no throttle.
-      return nil
+      @initial_time = @@memcache.get( gen_throttle_key() ) || @initial_time
     rescue MemCache::MemCacheError
-      return nil #memcache not working, ignore throttle
+      #memcache not working, silently ignore
     end
   end
 
-  def initialize(args = {})
-    # expecting args:
-    # :name -> uniquely identifying throttle name
-    # :buckets -> number of buckets to track
-    # :time_per_bucket -> seconds during which each bucket counts
-    # number => Proc -> procedure to run when number threshold hit
-    @name = args.delete(:name) || ""
-    @buckets = args.delete(:buckets) || 1
-    @time_per_bucket = args.delete(:time_per_bucket) || 60
-
-    # intialize some stuff
-    @initial_time ||= Time.now.to_i
-  end
-
-protected
-
   ##########################################
   # some functions to determine cache keys
-  def Throttle.gen_throttle_key(name)
-    CACHE_PREFIX + 'obj:' + name
-  end
   def gen_throttle_key
-    self.class.gen_throttle_key(@name)
+    CACHE_PREFIX + 'obj:' + name
   end
   def gen_bucket_key(bucket)
     CACHE_PREFIX + 'bkt:' + @name + ':' + bucket.to_s
@@ -164,7 +161,7 @@ protected
   end
 
   def create_bucket(bucket)
-    self.store # renew throttle expiration time
+    self.store_time # renew throttle expiration time
     expiry = (bucket + @buckets) * @time_per_bucket
     @@memcache.set(gen_bucket_key(bucket), 1, expiry)
 

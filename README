@@ -1,4 +1,101 @@
+= Throttle
+
 A memcached-based throttle - do something after a limit has been
-reached within a certain time period.
+reached globally within a certain time period.
 
+== Why it is useful
 
+Frequently you may wish to restrict your application from doing
+too much of something. Some good examples are:
+
+* Keeping your API users from hammering the API (either
+  deliberately or accidentally)
+* Spacing out expensive operations (perhaps as an API user)
+* Shutting out brute force hackers who make lots of requests
+  trying to guess passwords, CAPTCHAs, etc.
+
+This package provides a throttle for counting these events in
+a central memcache instance (so that distributed apps can make
+use of it) and taking action when thresholds are crossed. It is
+highly configurable and also highly robust.
+
+== Basic usage:
+
+  require 'rubygems'
+  require 'memcache'
+  require 'throttle'
+  Throttle.memcache = MemCache.new('localhost:11211')
+
+  t = Throttle.new {|count| raise 'ETooMuch' if count >= 10}
+  10.times { t.record_event } # -> raises 'ETooMuch'
+
+== Requirements
+
+Throttle requires the memcache rubygem. It also requires that
+you have a memcached running; you must supply the cache
+object to the class.
+
+For development, the rspec gem is required for testing.
+
+== public methods
+
+=== memcache=(cache)
+
+Class method for supplying the memcache handle.  Technically it can be
+any cache object with get, set and incr methods that work the same as
+memcache. This method must be called once prior to instantiating any
+throttles.
+
+=== new(args={})
+=== new(args={}) {|count| ...}
+
+All arguments are optional, but the throttle will not do much by default.
+
+* :name (default "")
+  Uniquely identifying throttle name - should be unique globally.
+  Any throttle created globally against the same memcache with the
+  same name will share the same event count. Good bases for a name
+  include account IDs, IP addresses, class + method names, etc.
+
+* :buckets (default 1)
+  Number of buckets to use for counting. With a single bucket, the
+  count will be reset after each time period. With multiple buckets,
+  the buckets will expire serially and counts in the remaining buckets
+  will be included in the total, for a more even throttle.
+
+* :time_per_bucket (default 60)
+  Lifetime of a bucket's active service. After this many seconds
+  a new bucket will be created for counting, and if the maximum
+  number of buckets is exceeded, the oldest will expire. The defaults
+  configure a throttle that resets the count every minute.
+
+* number => Proc
+  Callback procedure to run when number threshold is hit. It is
+  called with a single parameter: the count.
+
+If a block is supplied, it is called every time an event is recorded,
+with a single parameter: the count.
+
+It is assumed that every throttle object with the same name will be
+configured with the same buckets and timing (though by different
+instances or even different applications), but this is not verified.
+You will get unreliable results if you do otherwise.
+
+=== #record_event
+
+Adds 1 to the current count and calls configured callbacks or block
+accordingly.
+
+== Other usage
+
+You may find it helpful to override #test_threshold(count) - this method
+is called every time the count is incremented. Normally it tries to
+call the block or callbacks supplied at instantiation, but you may wish
+to hardwire the behavior instead.
+
+== TODO
+
+* Sane methods for determining the current count without incrementing
+* Support for callbacks based on ranges instead of just single thresholds
+* Allow callbacks/block to be configured after instantiation
+* See if anyone cares :-)
