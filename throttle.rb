@@ -68,8 +68,9 @@ class Throttle
       @@memcache.set(self.gen_throttle_key, self,
         Time.now.to_i + @buckets * @time_per_bucket)
     rescue MemCache::MemCacheError
-      return self #memcache not working, silently ignore
+      #memcache not working, silently ignore
     end
+    return self
   end
 
   def Throttle.retrieve(name)
@@ -96,6 +97,8 @@ class Throttle
     # intialize some stuff
     @initial_time ||= Time.now.to_i
   end
+
+protected
 
   ##########################################
   # some functions to determine cache keys
@@ -154,7 +157,7 @@ class Throttle
     prev_buckets.reject!{|n| n < 0} #won't exist before 0
     prev_buckets.map!{|n| gen_bucket_key(n)} #map to cache keys
     if !prev_buckets.empty?
-      prev_buckets = Array.new(@@memcache.get(*prev_buckets))
+      prev_buckets = [*@@memcache.get(*prev_buckets)]
     end
     prev_buckets.map!{|n| n ||= 0}  #fill w/ 0 if any are missing
     return prev_buckets

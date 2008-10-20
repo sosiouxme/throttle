@@ -32,8 +32,7 @@ describe "a throttle" do
     end
     t.record_event
     sleep(2)
-    violated(@cache.inspect)
-    lambda { t.record_event }.should_not raise_error()
+    t.record_event #}.should_not raise_error()
   end
 
 end

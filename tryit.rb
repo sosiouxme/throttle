@@ -11,11 +11,15 @@ class Throttle::Simple < Throttle
   end
 end
 
-
 CACHE = MemCache.new 'localhost:11211'
 Throttle.set_memcache(CACHE)
-t = Throttle::Simple.create(:name => 'baz2', :buckets => 10, :time_per_bucket => 1)
-puts t.inspect
-puts t.record_event
-#10.times {t.record_event}
+t = Throttle::Simple.create(
+  :name => 'example',
+  :buckets => 10,
+  :time_per_bucket => 6
+  # throttle over 1min period, broken into 10 intervals
+)
+t.record_event
+puts "All's well until the next line"
+10.times {t.record_event} # -> raises exception
 

@@ -75,4 +75,13 @@ describe "a throttle" do
     lambda { t.record_event }.should raise_error('bork')
   end
 
+  it "should fail gracefully when memcache fails" do
+    t = Throttle.create
+    def t.test_threshold(count)
+      raise 'bork'
+    end
+    @cache.simulate_error_on_next
+    lambda { t.record_event }.should_not raise_error()
+  end
+
 end

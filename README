@@ -1,4 +1,4 @@
 A memcached-based throttle - do something after a limit has been
-reached within a certain time. Currently working on the best
-way to "do something" as well as how best to conform to Ruby
-standards for how this project should work. You know, test cases, etc.
+reached within a certain time period.
+
+
