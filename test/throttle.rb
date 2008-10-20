@@ -19,12 +19,12 @@ describe "Throttle.new" do
 
   it "should work with a block" do
     t = Throttle.new { a = 1 }
-    t.should_not == nil
+    t.should_not be_nil
   end
 
   it "should work with threshold callbacks" do
     t = Throttle.new(1 => lambda { sleep(1) })
-    t.should_not == nil
+    t.should_not be_nil
   end
 
   it "should fail gracefully if memcached isn't working" do
@@ -75,11 +75,41 @@ describe "a throttle" do
     lambda { t.record_event }.should raise_error('bork2')
   end
 
+  it "should work with range-delimited callbacks" do
+    t = Throttle.new(
+      2..3 => lambda { raise 'bork1' }
+    )
+    lambda { t.record_event }.should_not raise_error('bork1')
+    lambda { t.record_event }.should raise_error('bork1')
+    lambda { t.record_event }.should raise_error('bork1')
+    lambda { t.record_event }.should_not raise_error('bork1')
+  end
+
   it "should call a block if given" do
     a = 0
     t = Throttle.new { a = 1 }
     t.record_event
     a.should == 1
+  end
+
+  it "should call a :always callback if given" do
+    a = 0
+    t = Throttle.new(:always => lambda { a = 1 })
+    t.record_event
+    a.should == 1
+  end
+
+  it "should callback with 1 param if block accepts" do
+    t = Throttle.new {|c| c.should be_an_instance_of(Fixnum) }
+    t.record_event
+  end
+
+  it "should callback with 2 params if block accepts" do
+    t = Throttle.new do |c,t2|
+      c.should be_an_instance_of(Fixnum)
+      t2.should be_an_instance_of(Throttle)
+    end
+    t.record_event
   end
 
   it "should fail gracefully when memcache fails" do

@@ -22,7 +22,8 @@ class Throttle
     @name = args.delete(:name) || ""
     @buckets = args.delete(:buckets) || 1
     @time_per_bucket = args.delete(:time_per_bucket) || 60
-    @test = test ? test : args # whatever's left
+    args[:always] = test if test
+    @test = args
 
     # intialize start time
     self.retrieve_time #gets start time of existing throttle if any
@@ -62,14 +63,23 @@ class Throttle
   def test_threshold(count)
   # this is called whenever an event occurs and is passed
   # the new tally so that action may be taken if needed.
-    if @test.is_a? Proc
-      @test.call(count)
-    elsif @test.is_a? Hash
-      if test = @test[count]
-        test.call(count)
+  # if multiple callbacks apply they run in unspecified order.
+    @test.each do |k,callback|
+      next unless callback.is_a? Proc
+      if k.is_a? Range
+        next unless k.include? count
+      elsif k.is_a? Fixnum
+        next unless k == count
+      elsif k == :always
+        # always run callback
+      else
+        next # unknown stuff in hash
       end
-    else
-      raise 'should not get here'
+      if callback.arity == 1
+        callback.call(count)
+      else
+        callback.call(count,self)
+      end
     end
   end
 
