@@ -14,10 +14,10 @@ too much of something. Some good examples are:
 * Shutting out brute force hackers who make lots of requests
   trying to guess passwords, CAPTCHAs, etc.
 
-This package provides a throttle for counting these events in
-a central memcache instance (so that distributed apps can make
-use of it) and taking action when thresholds are crossed. It is
-highly configurable and also highly robust.
+This package provides a persistent throttle for counting these events in
+a central memcache instance (so that distributed apps can make use of it)
+and taking action when thresholds are crossed. It is highly configurable
+and also highly robust.
 
 == Basic usage:
 
@@ -69,12 +69,16 @@ All arguments are optional, but the throttle will not do much by default.
   number of buckets is exceeded, the oldest will expire. The defaults
   configure a throttle that resets the count every minute.
 
-* number => Proc
-  Callback procedure to run when number threshold is hit. It is
-  called with a single parameter: the count.
+* Fixnum  => Proc
+  Range   => Proc
+  :always => Proc
+  Callback procedure(s) to run when current count matches. It is
+  called with one or two parameters: first the count, second the
+  throttle object itself. If multiple callbacks match, they are
+  called in indeterminate order.
 
-If a block is supplied, it is called every time an event is recorded,
-with a single parameter: the count.
+If a block is supplied, it is treated as if it had been passed
+as the :always => argument.
 
 It is assumed that every throttle object with the same name will be
 configured with the same buckets and timing (though by different
@@ -112,7 +116,5 @@ fault.
 == TODO
 
 * Sane methods for determining the current count without incrementing
-* Support for callbacks based on ranges instead of just single thresholds
 * Allow callbacks/block to be configured after instantiation
-* Match args to callbacks to what they accept (arity)
 * See if anyone cares :-)
