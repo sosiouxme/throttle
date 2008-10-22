@@ -16,6 +16,12 @@ describe "the mock cache" do
     lambda { @cache.incr('key') }.should raise_error(MemCache::MemCacheError)
   end
 
+  it "should fail an add when requested" do
+    @cache.simulate_add_failure
+    @cache.add('key','value').should == false
+    @cache.add('key','value').should == true
+  end
+
   it "should expire entries" do
     @cache.set('key','value',Time.now.to_i + 1)
     @cache.get('key').should == 'value'

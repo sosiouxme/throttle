@@ -24,10 +24,15 @@ class MockMemcache < Hash
 
   def []=(key,value)
     test_for_error()
+    @expiry.delete(key) # removes expiry, so add/set should set expiry after this
     super(key,value)
   end
 
   def add(key, value, exp = nil)
+    if @add_error
+      @add_error = false
+      return false
+    end
     exp += Time.now.to_i if exp && exp < Time.now.to_i
     if self.has_key? key
       return false
@@ -61,6 +66,10 @@ class MockMemcache < Hash
 
   def simulate_error_on_next
     @error = true
+  end
+
+  def simulate_add_failure
+    @add_error = true
   end
 
 protected

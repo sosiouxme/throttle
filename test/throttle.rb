@@ -112,6 +112,11 @@ describe "a throttle" do
     t.record_event
   end
 
+  it "should increment by non-1 amounts" do
+    t = Throttle.new(5 => lambda { raise 'bork' })
+    lambda { t.record_event(5) }.should raise_error('bork')
+  end
+
   it "should fail gracefully when memcache fails" do
     t = Throttle.new
     def t.test_threshold(count)

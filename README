@@ -84,10 +84,12 @@ configured with the same buckets and timing (though by different
 instances or even different applications), but this is not verified.
 You will get unreliable results if you do otherwise.
 
-=== #record_event
+=== #record_event(count = 1)
 
-Adds 1 to the current count and calls configured callbacks or block
-accordingly.
+Increments the current count and calls configured callbacks or block
+accordingly. Note that if the increment is by an amount other than 1,
+numeric and ranged thresholds may be skipped over and their callbacks
+not called.
 
 == Other usage
 
@@ -103,14 +105,13 @@ them. The throttle won't record events or test thresholds if memcache
 is unavailable or failing for some reason. It will simply do nothing
 so that your application proceeds normally.
 
-Throttle (by careful use of memcache's incr functionality) should avoid
-all race conditions that might normally be encountered, with one
-exception: creation of a new bucket - in this instance it is possible
-for two throttles trying to create the same bucket to overwrite
-each others' entry, which will cause each to miss the fact that the
-other counted an event, and could even cause the same threshold to
-be crossed (and processed) by both at the same time. This seems a minor
-fault.
+Throttle (by careful use of memcache's add and incr functionality)
+should avoid all race conditions that might otherwise be encountered,
+with one exception: at creation of a new bucket it is possible that two
+throttles might summarize previous buckets at slightly different times
+and thus come up with a different total. In that case, whichever sum is
+stored first is used by all; it's possible this might result in threshold
+crossings being repeated, but should not allow any to be skipped.
 
 == TODO
 
