@@ -145,10 +145,7 @@ protected
   # or something.
 
   def summarize_previous_buckets(array)
-    sum = 0
-    print array.inspect
-    array.each { |n| sum += n }
-    return sum
+    array.inject(0) { |sum,n| sum += n }
   end
   def sum_prevsum_and_bucket(prev_sum, current)
     return prev_sum + current
@@ -165,8 +162,8 @@ protected
     prev_buckets.map!{|n| gen_bucket_key(n)} #map to cache keys
     if !prev_buckets.empty?
       prev_buckets = [*@@memcache.get(*prev_buckets)]
+      prev_buckets.map!{|n| n || 0}  #fill w/ 0 if any are missing
     end
-    prev_buckets.map!{|n| n ||= 0}  #fill w/ 0 if any are missing
     return prev_buckets
   end
 

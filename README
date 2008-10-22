@@ -31,9 +31,8 @@ and also highly robust.
 
 == Requirements
 
-Throttle requires the memcache rubygem. It also requires that
-you have a memcached running; you must supply the cache
-object to the class.
+Throttle requires the Ruby-MemCache rubygem. It also requires that you
+have a memcached running; you must supply the cache object to the class.
 
 For development, the rspec gem is required for testing.
 
