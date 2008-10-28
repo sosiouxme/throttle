@@ -1,27 +1,27 @@
 class Throttle
+
   # the memcached object instance we'll be using
   @@memcache = nil
-  def Throttle.memcache=(cache)
-    @@memcache = cache
-  end
-  def Throttle.memcache(cache)
-    @@memcache
-  end
+  def Throttle.memcache=(cache) @@memcache = cache end
+  def Throttle.memcache() @@memcache end
 
   # the namespace prefix for all throttles in the cache
-  CACHE_PREFIX = 'Throttle:'
+  @@prefix = 'Throttle:'
+  def Throttle.prefix=(str) @@prefix = str end
+  def Throttle.prefix() @@prefix end
 
-  attr_reader :name, :buckets, :time_per_bucket, :initial_time
 
-  def initialize(args = {}, &test)
+  attr_reader :name, :intervals, :interval_secs, :initial_time
+
+  def initialize(name = '', args = {}, &test)
     # expecting args:
     # :name -> uniquely identifying throttle name
-    # :buckets -> number of buckets to track
-    # :time_per_bucket -> seconds during which each bucket counts
+    # :intervals -> number of intervals to track
+    # :interval_secs -> seconds during which each interval counts
     # number => Proc -> procedure to run when number threshold hit
-    @name = args.delete(:name) || ""
-    @buckets = args.delete(:buckets) || 1
-    @time_per_bucket = args.delete(:time_per_bucket) || 60
+    @name = name
+    @intervals = args.delete(:intervals) || 1
+    @interval_secs = args.delete(:interval_secs) || 60
     args[:always] = test if test
     @test = args
 
@@ -34,52 +34,53 @@ class Throttle
   ####################################################
   # use the throttle
   def record_event(count = 1)
-    bucket = current_bucket()
+    interval = current_interval()
     begin
       prev_sum = 0
-      new_val = @@memcache.incr(gen_bucket_key(bucket), count)
+      new_val = @@memcache.incr(gen_interval_key(interval), count)
       if new_val
-        prev_sum = @@memcache.get(gen_summary_key(bucket)) || 0;
-      else # the bucket must not exist yet. create.
-        prev_sum = create_bucket(bucket)
-        new_val = @@memcache.incr(gen_bucket_key(bucket), count)
+        prev_sum = @@memcache.get(gen_summary_key(interval)) || 0;
+      else # the interval must not exist yet. create.
+        prev_sum = create_interval(interval)
+        new_val = @@memcache.incr(gen_interval_key(interval), count)
       end
-      test_threshold(total = sum_prevsum_and_bucket(prev_sum, new_val))
+      test_threshold(total = sum_prevsum_and_interval(prev_sum, new_val))
       return total
     rescue MemCache::MemCacheError
       return nil #memcache not working, ignore throttle
     end
   end
+  alias :incr :record_event
 
 protected
 
   ############################################################
   # in order to keep a running tally of recent events, the
-  # time period is broken up into multiple buckets which are
+  # time period is broken up into multiple intervals which are
   # tallied separately and summed to get the full count. so
-  # for instance, an hour may be broken up into 10 buckets
-  # each covering 6 minutes. the most recent 10 buckets are
-  # added for the full hour's tally; older buckets are
+  # for instance, an hour may be broken up into 10 intervals
+  # each covering 6 minutes. the most recent 10 intervals are
+  # added for the full hour's tally; older intervals are
   # discarded after an hour.
   #
   # in order to do the sum without constantly accessing lots
-  # of bucket entries, previous buckets (which don't change
-  # anyway) should be summed when a new bucket is created.
-  # this is the "summarize_previous_buckets" method.
+  # of interval entries, previous intervals (which don't change
+  # anyway) should be summed when a new interval is created.
+  # this is the "summarize_previous_intervals" method.
   #
   # then at the time an event is tallied, only the previous
-  # sum and the current bucket need to be combined (via the
-  # "sum_prevsum_and_bucket" method) for the full tally.
+  # sum and the current interval need to be combined (via the
+  # "sum_prevsum_and_interval" method) for the full tally.
   #
   # a simple "summarizing" scheme would be to just add all of
-  # the buckets together. more complex schemes might use
+  # the intervals together. more complex schemes might use
   # weighted sums to give more recent events higher weight
   # or something.
 
-  def summarize_previous_buckets(array)
+  def summarize_previous_intervals(array)
     array.inject(0) { |sum,n| sum += n }
   end
-  def sum_prevsum_and_bucket(prev_sum, current)
+  def sum_prevsum_and_interval(prev_sum, current)
     return prev_sum + current
   end
 
@@ -124,11 +125,11 @@ protected
   end
 
   # have this throttle object store its time into the
-  # memcache; it will expire if new buckets are not created
+  # memcache; it will expire if new intervals are not created
   def store_time
     begin
       @@memcache.set(self.gen_throttle_key, @initial_time,
-        Time.now.to_i + @buckets * @time_per_bucket)
+        Time.now.to_i + @intervals * @interval_secs)
     rescue MemCache::MemCacheError
       #memcache not working, silently ignore
     end
@@ -138,45 +139,45 @@ protected
   ##########################################
   # some functions to determine cache keys
   def gen_throttle_key
-    CACHE_PREFIX + 'exp:' + name
+    @@prefix + 'exp:' + @name
   end
-  def gen_bucket_key(bucket)
-    CACHE_PREFIX + 'bkt:' + @name + ':' + bucket.to_s
+  def gen_interval_key(interval)
+    @@prefix + 'bkt:' + @name + ':' + interval.to_s
   end
-  def gen_summary_key(bucket)
-    CACHE_PREFIX + 'sum:' + @name + ':' + bucket.to_s
-  end
-
-  def current_bucket
-    return (Time.now.to_i - @initial_time) / @time_per_bucket
+  def gen_summary_key(interval)
+    @@prefix + 'sum:' + @name + ':' + interval.to_s
   end
 
-  # get the buckets prior to this one so can summarize them
-  def get_previous_buckets(bucket)
-    prev_buckets = Range.new(bucket-@buckets+1, bucket-1).to_a
-    prev_buckets.reject!{|n| n < 0} #won't exist before 0
-    prev_buckets.map!{|n| gen_bucket_key(n)} #map to cache keys
-    if !prev_buckets.empty?
-      prev_buckets = [*@@memcache.get(*prev_buckets)]
-      prev_buckets.map!{|n| n || 0}  #fill w/ 0 if any are missing
+  def current_interval
+    return (Time.now.to_i - @initial_time) / @interval_secs
+  end
+
+  # get the intervals prior to this one so can summarize them
+  def get_previous_intervals(interval)
+    prev_intervals = Range.new(interval-@intervals+1, interval-1).to_a
+    prev_intervals.reject!{|n| n < 0} #won't exist before 0
+    prev_intervals.map!{|n| gen_interval_key(n)} #map to cache keys
+    if !prev_intervals.empty?
+      prev_intervals = [*@@memcache.get(*prev_intervals)]
+      prev_intervals.map!{|n| n || 0}  #fill w/ 0 if any are missing
     end
-    return prev_buckets
+    return prev_intervals
   end
 
-  def create_bucket(bucket)
+  def create_interval(interval)
     self.store_time # renew throttle expiration time
-    expiry = (bucket + @buckets) * @time_per_bucket
+    expiry = (interval + @intervals) * @interval_secs
     #
-    # we need to set up the summary from previous buckets
-    prev_sum = summarize_previous_buckets(get_previous_buckets(bucket))
-    if !@@memcache.add(gen_summary_key(bucket), prev_sum, expiry)
+    # we need to set up the summary from previous intervals
+    prev_sum = summarize_previous_intervals(get_previous_intervals(interval))
+    if !@@memcache.add(gen_summary_key(interval), prev_sum, expiry)
       # in a race, another process might store a different summary first;
       # in that case, use whatever it came up with
-      prev_sum = @@memcache.get(gen_summary_key(bucket)) || prev_sum
+      prev_sum = @@memcache.get(gen_summary_key(interval)) || prev_sum
     end
 
-    # "add" bucket - this will fail silently in a race
-    @@memcache.add(gen_bucket_key(bucket), 0, expiry)
+    # "add" interval - this will fail silently in a race
+    @@memcache.add(gen_interval_key(interval), 0, expiry)
     return prev_sum
   end
 

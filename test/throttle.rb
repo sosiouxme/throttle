@@ -7,14 +7,13 @@ describe "Throttle.new" do
   end
 
   it "should read its args" do
-    t = Throttle.new(
-          :name => 'test',
-          :buckets => 10,
-          :time_per_bucket => 60
+    t = Throttle.new('test',
+          :intervals => 10,
+          :interval_secs => 60
           )
     t.name.should == 'test'
-    t.buckets.should == 10
-    t.time_per_bucket.should == 60
+    t.intervals.should == 10
+    t.interval_secs.should == 60
   end
 
   it "should work with a block" do
@@ -23,13 +22,15 @@ describe "Throttle.new" do
   end
 
   it "should work with threshold callbacks" do
-    t = Throttle.new(1 => lambda { sleep(1) })
+    t = Throttle.new('', 1 => lambda { sleep(1) })
     t.should_not be_nil
   end
 
   it "should fail gracefully if memcached isn't working" do
-    @cache.simulate_error_on_next
-    lambda { t = Throttle.new }.should_not raise_error()
+    unless ENV['TEST_MEMCACHE']
+      @cache.simulate_error_on_next
+      lambda { t = Throttle.new }.should_not raise_error()
+    end
   end
 end
 
@@ -48,7 +49,7 @@ end
 describe "a throttle" do
   it "should call test_threshold for every event" do
     t = Simple1.new
-    lambda { t.record_event }.should raise_error('bork')
+    lambda { t.incr }.should raise_error('bork')
   end
 
   it "should run the count up to the threshold" do
@@ -67,7 +68,7 @@ describe "a throttle" do
   end
 
   it "should work with threshold callbacks" do
-    t = Throttle.new(
+    t = Throttle.new('',
       1 => lambda { raise 'bork1' },
       2 => lambda { |c| raise 'bork2' }
     )
@@ -76,7 +77,7 @@ describe "a throttle" do
   end
 
   it "should work with range-delimited callbacks" do
-    t = Throttle.new(
+    t = Throttle.new('',
       2..3 => lambda { raise 'bork1' }
     )
     lambda { t.record_event }.should_not raise_error('bork1')
@@ -94,7 +95,7 @@ describe "a throttle" do
 
   it "should call a :always callback if given" do
     a = 0
-    t = Throttle.new(:always => lambda { a = 1 })
+    t = Throttle.new('', :always => lambda { a = 1 })
     t.record_event
     a.should == 1
   end
@@ -113,17 +114,19 @@ describe "a throttle" do
   end
 
   it "should increment by non-1 amounts" do
-    t = Throttle.new(5 => lambda { raise 'bork' })
+    t = Throttle.new('', 5 => lambda { raise 'bork' })
     lambda { t.record_event(5) }.should raise_error('bork')
   end
 
   it "should fail gracefully when memcache fails" do
-    t = Throttle.new
-    def t.test_threshold(count)
-      raise 'bork'
+    unless ENV['TEST_MEMCACHE'] # can't simulate errs w/ real thing
+      t = Throttle.new
+      def t.test_threshold(count)
+        raise 'bork'
+      end
+      @cache.simulate_error_on_next
+      lambda { t.record_event }.should_not raise_error()
     end
-    @cache.simulate_error_on_next
-    lambda { t.record_event }.should_not raise_error()
   end
 
 end

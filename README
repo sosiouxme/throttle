@@ -14,10 +14,9 @@ too much of something. Some good examples are:
 * Shutting out brute force hackers who make lots of requests
   trying to guess passwords, CAPTCHAs, etc.
 
-This package provides a persistent throttle for counting these events in
-a central memcache instance (so that distributed apps can make use of it)
-and taking action when thresholds are crossed. It is highly configurable
-and also highly robust.
+This class provides persistent throttles with rolling historical event
+counts maintained in a global memcache (so that distributed apps can
+share them).  It is highly configurable and robust.
 
 == Basic usage:
 
@@ -45,27 +44,27 @@ any cache object with get, set and incr methods that work the same as
 memcache. This method must be called once prior to instantiating any
 throttles.
 
-=== new(args={})
-=== new(args={}) {|count| ...}
+=== new(name = '', args={})
+=== new(name = '', args={}) {|count| ...}
 
 All arguments are optional, but the throttle will not do much by default.
 
-* :name (default "")
+* name (default "")
   Uniquely identifying throttle name - should be unique globally.
   Any throttle created globally against the same memcache with the
   same name will share the same event count. Good bases for a name
   include account IDs, IP addresses, class + method names, etc.
 
-* :buckets (default 1)
-  Number of buckets to use for counting. With a single bucket, the
-  count will be reset after each time period. With multiple buckets,
-  the buckets will expire serially and counts in the remaining buckets
+* :intervals (default 1)
+  Number of intervals to use for counting. With a single interval, the
+  count will be reset after each time period. With multiple intervals,
+  the intervals will expire serially and counts in the remaining intervals
   will be included in the total, for a more even throttle.
 
-* :time_per_bucket (default 60)
-  Lifetime of a bucket's active service. After this many seconds
-  a new bucket will be created for counting, and if the maximum
-  number of buckets is exceeded, the oldest will expire. The defaults
+* :interval_secs (default 60)
+  Lifetime of an interval's active service. After this many seconds
+  a new interval will be created for counting, and if the maximum
+  number of intervals is exceeded, the oldest will expire. The defaults
   configure a throttle that resets the count every minute.
 
 * Fixnum  => Proc
@@ -80,11 +79,12 @@ If a block is supplied, it is treated as if it had been passed
 as the :always => argument.
 
 It is assumed that every throttle object with the same name will be
-configured with the same buckets and timing (though by different
+configured with the same intervals and timing (though by different
 instances or even different applications), but this is not verified.
 You will get unreliable results if you do otherwise.
 
 === #record_event(count = 1)
+=== #incr(count = 1)
 
 Increments the current count and calls configured callbacks or block
 accordingly. Note that if the increment is by an amount other than 1,
@@ -107,8 +107,8 @@ so that your application proceeds normally.
 
 Throttle (by careful use of memcache's add and incr functionality)
 should avoid all race conditions that might otherwise be encountered,
-with one exception: at creation of a new bucket it is possible that two
-throttles might summarize previous buckets at slightly different times
+with one exception: at creation of a new interval it is possible that two
+throttles might summarize previous intervals at slightly different times
 and thus come up with a different total. In that case, whichever sum is
 stored first is used by all; it's possible this might result in threshold
 crossings being repeated, but should not allow any to be skipped.

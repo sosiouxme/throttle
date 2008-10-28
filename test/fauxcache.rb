@@ -1,6 +1,6 @@
 require File.dirname(__FILE__) + '/spec_helper.rb'
 
-describe "the mock cache" do
+describe "the faux cache" do
 
   it "should work like a Memcache object" do
     @cache.set('key', 'value')
@@ -25,7 +25,7 @@ describe "the mock cache" do
   it "should expire entries" do
     @cache.set('key','value',Time.now.to_i + 1)
     @cache.get('key').should == 'value'
-    Kernel.sleep(1)
+    sleep(1)
     @cache.get('key').should == nil
   end
 
